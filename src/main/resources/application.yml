@@ -1,0 +1,34 @@
+server:
+  port: 8080
+
+spring:
+  # --- TiDB ---
+  datasource:
+    url: jdbc:mysql://127.0.0.1:4000/comment_db?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: root
+    password:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+
+  # --- Redis ---
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      database: 0
+
+  # --- Kafka ---
+  kafka:
+    bootstrap-servers: localhost:29092
+    consumer:
+      group-id: comment-sync-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer

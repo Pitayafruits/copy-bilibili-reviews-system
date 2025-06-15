@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # 1. TiDB 集群 (包含 PD, TiKV, TiDB)
+  pd:
+    image: pingcap/pd:v6.5.0
+    ports:
+      - "2379:2379"
+    volumes:
+      - ./pd_data:/data/pd
+    command:
+      - --name=pd
+      - --client-urls=http://0.0.0.0:2379
+      - --peer-urls=http://0.0.0.0:2380
+      - --advertise-client-urls=http://pd:2379
+      - --advertise-peer-urls=http://pd:2380
+      - --initial-cluster=pd=http://pd:2380
+    networks:
+      - tidb_net
+
+  tikv:
+    image: pingcap/tikv:v6.5.0
+    ports:
+      - "20160:20160"
+    volumes:
+      - ./tikv_data:/data/tikv
+    command:
+      - --addr=0.0.0.0:20160
+      - --advertise-addr=tikv:20160
+      - --pd=pd:2379
+    depends_on:
+      - pd
+    networks:
+      - tidb_net
+
+  tidb:
+    image: pingcap/tidb:v6.5.0
+    ports:
+      - "4000:4000" # MySQL 客户端连接端口
+      - "10080:10080"
+    command:
+      - --store=tikv
+      - --path=pd:2379
+    depends_on:
+      - tikv
+    networks:
+      - tidb_net
+
+  # 2. TiCDC (数据同步工具)
+  ticdc:
+    image: pingcap/ticdc:v6.5.0
+    ports:
+      - "8300:8300"
+    command: ["/cdc", "server", "--pd=http://pd:2379", "--addr=0.0.0.0:8300", "--advertise-addr=ticdc:8300"]
+    volumes:
+      - ./changefeed.toml:/tmp/changefeed.toml
+    depends_on:
+      - tidb
+    restart: unless-stopped
+    networks:
+      - tidb_net
+
+  # 3. Kafka 集群 (包含 Zookeeper 和 Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - tidb_net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.3.0
+    ports:
+      - "29092:29092" # 暴露给宿主机(Spring Boot应用)的端口
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - tidb_net
+
+  # 4. Redis (二级存储)
+  redis:
+    image: redis:6.2-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - tidb_net
+
+networks:
+  tidb_net:
+    driver: bridge

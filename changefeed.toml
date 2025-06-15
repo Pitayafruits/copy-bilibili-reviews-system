@@ -1,0 +1,3 @@
+[filter]
+# 过滤规则
+rules = ['comment_db.t_comment']
